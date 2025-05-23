@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fuel Route Optimization Tool</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+     integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+     crossorigin=""/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+     integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+     crossorigin=""></script>
+    <style>
+        #map { height: 400px; width: 100%; border-radius: 0.5rem; }
+        .leaflet-popup-content-wrapper { border-radius: 0.5rem; }
+        .input-group { margin-bottom: 1rem; }
+        .input-label { display: block; margin-bottom: 0.25rem; font-weight: 500; }
+        .input-field { width: 100%; padding: 0.5rem; border-radius: 0.375rem; border: 1px solid #D1D5DB; }
+        .btn { padding: 0.75rem 1.5rem; border-radius: 0.375rem; font-weight: 600; cursor: pointer; transition: background-color 0.2s; }
+        .btn-primary { background-color: #3B82F6; color: white; }
+        .btn-primary:hover { background-color: #2563EB; }
+        /* Custom styles for Leaflet markers if needed */
+        .highlight-marker {
+            /* Example: use a different icon or add a border */
+        }
+    </style>
+    <script>
+        // Tailwind config (optional, if you need to customize)
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-gray-100 font-sans">
+    <div class="container mx-auto p-4 md:p-8">
+        <header class="mb-8 text-center">
+            <h1 class="text-3xl md:text-4xl font-bold text-gray-800">Fuel Route Optimization Tool</h1>
+        </header>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div class="md:col-span-1 bg-white p-6 rounded-lg shadow-lg">
+                <h2 class="text-xl font-semibold mb-4 text-gray-700">Configuration</h2>
+
+                <div class="input-group">
+                    <label for="route-select" class="input-label">Select Route:</label>
+                    <select id="route-select" class="input-field"></select>
+                </div>
+
+                <div class="input-group">
+                    <label for="vehicle-select" class="input-label">Select Vehicle:</label>
+                    <select id="vehicle-select" class="input-field"></select>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4 input-group">
+                    <div>
+                        <label for="mileage-load" class="input-label">Mileage (Load km/L):</label>
+                        <input type="number" id="mileage-load" class="input-field" step="0.01">
+                    </div>
+                    <div>
+                        <label for="mileage-empty" class="input-label">Mileage (Empty km/L):</label>
+                        <input type="number" id="mileage-empty" class="input-field" step="0.01">
+                    </div>
+                </div>
+
+                <div class="input-group">
+                    <label for="tank-capacity" class="input-label">Tank Capacity (Liters):</label>
+                    <input type="number" id="tank-capacity" class="input-field" value="300">
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 input-group">
+                    <div>
+                        <label for="start-fuel" class="input-label">Start Fuel (L):</label>
+                        <input type="number" id="start-fuel" class="input-field" value="50">
+                    </div>
+                    <div>
+                        <label for="end-fuel" class="input-label">End Fuel (L):</label>
+                        <input type="number" id="end-fuel" class="input-field" value="30">
+                    </div>
+                    <div>
+                        <label for="buffer-fuel" class="input-label">Buffer Fuel (L):</label>
+                        <input type="number" id="buffer-fuel" class="input-field" value="20">
+                    </div>
+                </div>
+
+
+                <button id="optimize-button" class="btn btn-primary w-full mt-4">Run Optimization</button>
+            </div>
+
+            <div class="md:col-span-2 bg-white p-6 rounded-lg shadow-lg">
+                <h2 class="text-xl font-semibold mb-4 text-gray-700">Route Map</h2>
+                <div id="map" class="mb-6"></div>
+
+                <h2 class="text-xl font-semibold mb-2 text-gray-700">Optimization Results</h2>
+                <div id="results-output" class="bg-gray-50 p-4 rounded-md border border-gray-200 min-h-[100px] whitespace-pre-wrap">
+                    Select parameters and click "Run Optimization".
+                </div>
+            </div>
+        </div>
+
+        <footer class="mt-12 text-center text-sm text-gray-500">
+            <p>&copy; 2025 Fuel Optimizer. Diesel prices are placeholders.</p>
+        </footer>
+    </div>
+
+    <script>
+        // --- Data ---
+        const citiesData = {
+            "Adilabad": { lat: 19.6685, lng: 78.5300, price: 97.10, state: "TS" }, // Example from user
+            "Haridwar": { lat: 29.9457, lng: 78.1642, price: 90.50, state: "UK" },
+            "Dewas": { lat: 22.9676, lng: 76.0534, price: 92.50, state: "MP" },
+            "Bijapur": { lat: 16.8302, lng: 75.7100, price: 91.00, state: "KA" }, // Vijayapura
+            "Bangalore": { lat: 12.9716, lng: 77.5946, price: 89.50, state: "KA" }, // Bengaluru
+            "Toranagallu": { lat: 15.2330, lng: 76.6330, price: 91.20, state: "KA" },
+            "Baghola": { lat: 28.1300, lng: 77.3200, price: 88.70, state: "HR" },
+            "Palwal": { lat: 28.1487, lng: 77.3320, price: 88.90, state: "HR" },
+            "Chittorgarh": { lat: 24.8885, lng: 74.6269, price: 93.10, state: "RJ" },
+            "Bawal": { lat: 28.0830, lng: 76.5800, price: 89.10, state: "HR" },
+            "Hosur": { lat: 12.7409, lng: 77.8253, price: 90.20, state: "TN" },
+            "Nimbahera": { lat: 24.6258, lng: 74.6874, price: 93.50, state: "RJ" },
+            "Malegaon": { lat: 20.5472, lng: 74.5382, price: 92.80, state: "MH" },
+            "Raigarh": { lat: 21.8979, lng: 83.3940, price: 94.00, state: "CG" }, // Chhattisgarh
+            "Nagpur": { lat: 21.1458, lng: 79.0882, price: 92.20, state: "MH" }
+        };
+
+        const routesData = {
+            "Haridwar To Bangalore": ["Haridwar", "Dewas", "Bijapur", "Bangalore"],
+            "Toranagallu To Baghola": ["Toranagallu", "Bijapur", "Dewas", "Palwal", "Baghola"],
+            "Baghola To Chittorgarh": ["Baghola", "Palwal", "Bawal", "Chittorgarh"], // Added Palwal as it's a hub
+            "Chittorgarh To Hosur": ["Chittorgarh", "Nimbahera", "Malegaon", "Bijapur", "Hosur"],
+            "Raigarh To Toranagallu": ["Raigarh", "Nagpur", "Toranagallu"]
+        };
+
+        const vehiclesData = {
+            "RJ14GG9302": { loadMileage: 4.60, emptyMileage: 5.00, defaultTankCapacity: 350 },
+            "RJ14GH7301": { loadMileage: 2.10, emptyMileage: 4.00, defaultTankCapacity: 300 }
+            // Add more vehicles if needed
+        };
+
+        // --- Map Initialization ---
+        let map = L.map('map').setView([20.5937, 78.9629], 5); // Centered on India
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 18,
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+
+        let routePolyline = null;
+        let routeMarkers = [];
+
+        // --- UI Elements ---
+        const routeSelect = document.getElementById('route-select');
+        const vehicleSelect = document.getElementById('vehicle-select');
+        const mileageLoadInput = document.getElementById('mileage-load');
+        const mileageEmptyInput = document.getElementById('mileage-empty');
+        const tankCapacityInput = document.getElementById('tank-capacity');
+        const startFuelInput = document.getElementById('start-fuel');
+        const endFuelInput = document.getElementById('end-fuel');
+        const bufferFuelInput = document.getElementById('buffer-fuel');
+        const optimizeButton = document.getElementById('optimize-button');
+        const resultsOutput = document.getElementById('results-output');
+
+        // --- Populate Dropdowns ---
+        function populateDropdowns() {
+            // Routes
+            for (const routeName in routesData) {
+                const option = document.createElement('option');
+                option.value = routeName;
+                option.textContent = routeName;
+                routeSelect.appendChild(option);
+            }
+
+            // Vehicles
+            for (const vehicleId in vehiclesData) {
+                const option = document.createElement('option');
+                option.value = vehicleId;
+                option.textContent = vehicleId;
+                vehicleSelect.appendChild(option);
+            }
+            // Trigger change to load initial vehicle data
+            vehicleSelect.dispatchEvent(new Event('change'));
+            routeSelect.dispatchEvent(new Event('change')); // Trigger change to draw initial route
+        }
+
+        // --- Event Listeners ---
+        routeSelect.addEventListener('change', function() {
+            drawRoute(this.value);
+        });
+
+        vehicleSelect.addEventListener('change', function() {
+            const vehicleId = this.value;
+            if (vehiclesData[vehicleId]) {
+                mileageLoadInput.value = vehiclesData[vehicleId].loadMileage;
+                mileageEmptyInput.value = vehiclesData[vehicleId].emptyMileage;
+                tankCapacityInput.value = vehiclesData[vehicleId].defaultTankCapacity;
+            }
+        });
+
+        optimizeButton.addEventListener('click', runOptimization);
+
+        // --- Map Functions ---
+        function drawRoute(routeName) {
+            // Clear previous route
+            if (routePolyline) {
+                map.removeLayer(routePolyline);
+                routePolyline = null;
+            }
+            routeMarkers.forEach(marker => map.removeLayer(marker));
+            routeMarkers = [];
+
+            const cityNames = routesData[routeName];
+            if (!cityNames || cityNames.length === 0) return;
+
+            const latLngs = [];
+            cityNames.forEach(cityName => {
+                const city = citiesData[cityName];
+                if (city) {
+                    latLngs.push([city.lat, city.lng]);
+                    const marker = L.marker([city.lat, city.lng])
+                        .addTo(map)
+                        .bindPopup(`<b>${cityName}</b><br>State: ${city.state}<br>Diesel: ₹${city.price.toFixed(2)}/L (placeholder)`)
+                        .on('mouseover', function (e) {
+                            this.openPopup();
+                            // You could add a class for highlighting here: e.target.getElement().classList.add('highlight-marker');
+                        })
+                        .on('mouseout', function (e) {
+                            this.closePopup();
+                            // e.target.getElement().classList.remove('highlight-marker');
+                        });
+                    routeMarkers.push(marker);
+                } else {
+                    console.warn(`City data not found for: ${cityName}`);
+                }
+            });
+
+            if (latLngs.length > 1) {
+                routePolyline = L.polyline(latLngs, { color: '#3B82F6', weight: 5 }).addTo(map);
+                map.fitBounds(routePolyline.getBounds(), { padding: [50, 50] });
+            } else if (latLngs.length === 1) {
+                map.setView(latLngs[0], 8); // Zoom to the single point if only one city
+            }
+        }
+
+        // --- Optimization Logic (Placeholder) ---
+        function runOptimization() {
+            const selectedRouteName = routeSelect.value;
+            const selectedVehicleId = vehicleSelect.value;
+            const routeCityNames = routesData[selectedRouteName];
+
+            if (!routeCityNames || routeCityNames.length === 0) {
+                resultsOutput.textContent = "Please select a valid route.";
+                return;
+            }
+
+            const loadMileage = parseFloat(mileageLoadInput.value);
+            const emptyMileage = parseFloat(mileageEmptyInput.value); // Assuming load for simplicity in placeholder
+            const tankCapacity = parseFloat(tankCapacityInput.value);
+            const startFuel = parseFloat(startFuelInput.value);
+            const endFuel = parseFloat(endFuelInput.value);
+            const bufferFuel = parseFloat(bufferFuelInput.value);
+
+            if (isNaN(loadMileage) || isNaN(emptyMileage) || isNaN(tankCapacity) || isNaN(startFuel) || isNaN(endFuel) || isNaN(bufferFuel)) {
+                resultsOutput.textContent = "Please ensure all fuel and mileage inputs are valid numbers.";
+                return;
+            }
+            
+            // For this placeholder, we'll just list cities and their prices,
+            // and suggest filling at the cheapest. A real algorithm is much more complex.
+
+            let output = `Optimization Plan for: ${selectedRouteName}\n`;
+            output += `Vehicle: ${selectedVehicleId}\n`;
+            output += `Using Load Mileage: ${loadMileage} km/L\n`;
+            output += `Tank: ${tankCapacity}L, Start: ${startFuel}L, Target End: ${endFuel}L, Buffer: ${bufferFuel}L\n\n`;
+            
+            output += "Route Details (Placeholder Prices):\n";
+            let cheapestCity = null;
+            let minPrice = Infinity;
+
+            routeCityNames.forEach(cityName => {
+                const city = citiesData[cityName];
+                if (city) {
+                    output += `- ${cityName} (${city.state}): ₹${city.price.toFixed(2)}/L\n`;
+                    if (city.price < minPrice) {
+                        minPrice = city.price;
+                        cheapestCity = cityName;
+                    }
+                }
+            });
+
+            output += "\n--- Placeholder Suggestion ---\n";
+            if (cheapestCity) {
+                output += `Consider refueling at ${cheapestCity} as it has the lowest price (₹${minPrice.toFixed(2)}/L) on this route.\n`;
+                output += `The amount to fill depends on distance to next cheaper stop or destination, current fuel, and tank capacity.\n`;
+            } else {
+                output += "Could not determine a cheapest city for refueling suggestion.\n";
+            }
+            
+            output += "\nNote: This is a simplified placeholder. Actual fuel optimization requires complex calculations involving distances, real-time prices, and dynamic programming or heuristic algorithms.";
+
+            resultsOutput.textContent = output;
+        }
+
+        // --- Initial Load ---
+        document.addEventListener('DOMContentLoaded', () => {
+            populateDropdowns();
+            // Initial route draw will be triggered by populateDropdowns
+        });
+
+    </script>
+</body>
+</html>

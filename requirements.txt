@@ -1,0 +1,13 @@
+pandas
+numpy
+scikit-learn
+matplotlib
+requests
+gunicorn
+python-dotenv
+streamlit
+pulp
+folium
+streamlit-folium
+altair
+geopy
