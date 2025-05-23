@@ -104,8 +104,6 @@ if run_button:
     st.session_state.total_fuel = total_fuel
 
 if st.session_state.optimization_run:
-    st.subheader("✅ Recommended Fuel Stops")
-    st.write(st.session_state.stops_made)
 
     st.subheader("💰 Total Fuel Purchased and Cost")
     st.write(f"Total Fuel Purchased: {st.session_state.total_fuel:.2f} liters")
