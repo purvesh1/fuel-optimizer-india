@@ -105,18 +105,6 @@ if st.session_state.optimization_run:
 
     st_folium(m, width=700, height=500)
 
-    # Fuel Level Chart
-    st.subheader("📊 Fuel Level Along the Route")
-
-    line_chart = alt.Chart(st.session_state.fuel_chart_data).mark_line(point=True).encode(
-        x='Distance (km)',
-        y='Fuel Level (liters)'
-    ).properties(
-        width=700,
-        height=400
-    ).interactive()
-
-    #st.altair_chart(line_chart)
 
 else:
     st.info("Please adjust parameters and click 'Run Optimization' to see results.")
