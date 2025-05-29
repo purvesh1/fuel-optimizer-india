@@ -14,25 +14,29 @@ def load_data():
 
 routes_df = load_data()
 
+# Vehicle mileage data
+vehicle_mileage = {
+    'RJ14GG9302': {'Load': 4.60, 'Empty': 5.00},
+    'RJ14GH7301': {'Load': 2.10, 'Empty': 4.00}
+}
+
 # Initialize Session State
-if 'optimization_run' not in st.session_state:
-    st.session_state.optimization_run = False
-if 'stops_made' not in st.session_state:
-    st.session_state.stops_made = []
-if 'purchase_amounts' not in st.session_state:
-    st.session_state.purchase_amounts = []
-if 'fuel_chart_data' not in st.session_state:
-    st.session_state.fuel_chart_data = pd.DataFrame()
-if 'coords' not in st.session_state:
-    st.session_state.coords = []
+for key in ['optimization_run', 'stops_made', 'purchase_amounts', 'fuel_chart_data', 'coords', 'route_data', 'total_cost', 'total_fuel', 'filling_table']:
+    if key not in st.session_state:
+        st.session_state[key] = [] if key in ['stops_made', 'purchase_amounts', 'coords', 'filling_table'] else pd.DataFrame() if key == 'fuel_chart_data' else 0.0 if 'total' in key else False
 
 # Streamlit UI
 st.title("🚚 Fuel Optimization Tool")
 
 # User inputs
 route_selected = st.selectbox("Choose Route", routes_df['Route Name'].unique())
-mileage = st.number_input("Mileage (km/l)", value=5.0)
-tank_capacity = st.number_input("Fuel Tank Capacity (liters)", value=400.0)
+vehicle_selected = st.selectbox("Select Vehicle", list(vehicle_mileage.keys()))
+load_status = st.radio("Vehicle Load Status", ['Load', 'Empty'])
+
+mileage = vehicle_mileage[vehicle_selected][load_status]
+st.write(f"Vehicle Mileage: {mileage} km/l")
+
+tank_capacity = 300
 start_fuel = st.number_input("Starting Fuel (liters)", value=200.0)
 end_fuel = st.number_input("Ending Fuel (liters)", value=50.0)
 buffer_fuel = st.number_input("Buffer Fuel (liters)", value=30.0)
@@ -68,12 +72,38 @@ if run_button:
 
     stops_made = []
     purchase_amounts = []
+    total_cost = 0.0
+    total_fuel = 0.0
+    filling_table = []
+
+    current_fuel = start_fuel
+    cumulative_distance = 0
+
     for i in route_data.index:
+        purchased_fuel = pulp.value(purchase[i])
+        distance_to_current = 0 if i == 0 else distances[i-1]
+        cumulative_distance += distance_to_current
+        arrival_fuel = current_fuel - (0 if i == 0 else fuel_needed_segments[i-1])
+
         if pulp.value(stop[i]) == 1:
             stops_made.append(route_data.loc[i, 'Intersected District'])
-            purchase_amounts.append(pulp.value(purchase[i]))
+            purchase_amounts.append(purchased_fuel)
+            cost_at_stop = purchased_fuel * route_data.loc[i, 'Price']
+            total_cost += cost_at_stop
+            total_fuel += purchased_fuel
+            filling_table.append({
+                'Location': route_data.loc[i, 'Intersected District'],
+                'Distance (km)': f"{cumulative_distance:.2f}",
+                'Arrival Fuel (L)': f"{arrival_fuel:.2f}",
+                'Purchased Fuel (L)': f"{purchased_fuel:.2f}",
+                'Depart Fuel (L)': f"{arrival_fuel + purchased_fuel:.2f}",
+                'Fuel Cost (₹)': f"{cost_at_stop:.2f}",
+                'Price (₹/L)': f"{route_data.loc[i, 'Price']:.4f}"
+            })
+            current_fuel = arrival_fuel + purchased_fuel
         else:
             purchase_amounts.append(0)
+            current_fuel = arrival_fuel
 
     distances_cum = [0] + list(pd.Series(distances).cumsum())
 
@@ -82,29 +112,37 @@ if run_button:
         'Fuel Level (liters)': fuel_levels
     })
 
-    st.session_state.optimization_run = True
-    st.session_state.stops_made = stops_made
-    st.session_state.purchase_amounts = purchase_amounts
-    st.session_state.fuel_chart_data = fuel_chart_data
-    st.session_state.coords = coords
+    st.session_state.update({
+        'optimization_run': True,
+        'stops_made': stops_made,
+        'purchase_amounts': purchase_amounts,
+        'fuel_chart_data': fuel_chart_data,
+        'coords': coords,
+        'route_data': route_data,
+        'total_cost': total_cost,
+        'total_fuel': total_fuel,
+        'filling_table': filling_table
+    })
 
 if st.session_state.optimization_run:
-    st.subheader("✅ Recommended Fuel Stops")
-    st.write(st.session_state.stops_made)
 
-    # Map Visualization
+    st.subheader("💰 Total Fuel Purchased and Cost")
+    st.write(f"Total Fuel Purchased: {st.session_state.total_fuel:.2f} liters")
+    st.write(f"Total Cost: ₹{st.session_state.total_cost:.2f}")
+
+    st.subheader("📝 Filling Details")
+    filling_df = pd.DataFrame(st.session_state.filling_table)
+    st.table(filling_df)
+
     st.subheader("🗺️ Route Map with Recommended Stops")
     m = folium.Map(location=st.session_state.coords[0], zoom_start=6)
-
     for idx, coord in enumerate(st.session_state.coords):
-        popup = f"{routes_df.loc[idx, 'Intersected District']}<br>Fuel Purchased: {st.session_state.purchase_amounts[idx]:.2f} liters"
-        if st.session_state.purchase_amounts[idx] > 0:
-            folium.Marker(coord, popup=popup, icon=folium.Icon(color='red', icon='gas-pump', prefix='fa')).add_to(m)
-        else:
-            folium.CircleMarker(coord, radius=4, color='blue', fill=True, fill_opacity=0.5, popup=popup).add_to(m)
-
+        popup = f"{st.session_state.route_data.loc[idx, 'Intersected District']}<br>Price: ₹{st.session_state.route_data.loc[idx, 'Price']}/L"
+        folium.Marker(coord, popup=popup, icon=folium.Icon(color='red' if st.session_state.purchase_amounts[idx] else 'blue')).add_to(m)
     st_folium(m, width=700, height=500)
 
-
+    st.subheader("📊 Fuel Level Along the Route")
+    chart = alt.Chart(st.session_state.fuel_chart_data).mark_line(point=True).encode(x='Distance (km)', y='Fuel Level (liters)').interactive()
+    st.altair_chart(chart)
 else:
-    st.info("Please adjust parameters and click 'Run Optimization' to see results.")
+    st.info("Adjust parameters and click 'Run Optimization'.")
